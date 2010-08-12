@@ -3,8 +3,8 @@
 
 use strict;
 use warnings;
+
 use Test::More;
-use Digest;
 
 use File::Spec;
 use FindBin '$Bin';

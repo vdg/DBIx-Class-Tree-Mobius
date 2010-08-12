@@ -1,5 +1,5 @@
 package DBIx::Class::Tree::Mobius;
-# ABSTRACT: Manage trees of data using the nested intervals with continued fraction encoding
+# ABSTRACT: Manage trees of data using the Möbius encoding (nested intervals with continued fraction)
 
 use strict;
 use warnings;
@@ -335,8 +335,8 @@ sub attach_child {
 
 Create a table for your tree data with the 7 special columns used by Tree::Mobius.
 By default, these columns are mobius_a mobius_b mobius_b and mobius_d (integer),
-left and right (float) and inner (boolean). See add_mobius_tree_columns to change
-the default names.
+left and right (float) and inner (boolean). See the add_mobius_tree_columns method
+to change the default names.
 
   CREATE TABLE employees (
     name TEXT NOT NULL
@@ -349,7 +349,7 @@ the default names.
     inner boolean NOT NULL DEFAULT '0',
   );
 
-In your Schema or DB class add Tree::Mobius to the top of the component list.
+In your Schema or DB class add Tree::Mobius in the component list.
 
   __PACKAGE__->load_components(qw( Tree::Mobius ... ));
 
@@ -358,32 +358,49 @@ Call add_mobius_tree_columns.
   package My::Employee;
   __PACKAGE__->add_mobius_tree_columns();
 
-Thats it, now you can create and manipulate trees for your table.
+That's it, now you can create and manipulate trees for your table.
 
   #!/usr/bin/perl
   use My::Employee;
   
-  my $big_boss = My::Employee->create({ name=> 'larry W.' });
-  my $boss = My::Employee->create({ name=> 'John Doe' });
-  my $employee = My::Employee->create({ name=> 'No one' });
+  my $big_boss = My::Employee->create({ name => 'Larry W.' });
+  my $boss = My::Employee->create({ name => 'John Doe' });
+  my $employee = My::Employee->create({ name => 'No One' });
   
   $big_boss->attach_child( $boss );
   $boss->attach_child( $employee );
 
 =head1 DESCRIPTION
 
-This module provides methods for working with nested intervals with continued fraction encoding trees. This model is a way of representing hierarchical information in a database. 
-This takes a complementary approach of both the 'Nested Sets' model and the 'Materialized Path' model.
+This module provides methods for working with trees of data using a
+Möbius encoding, a variant of 'Nested Intervals' tree encoding using
+continued fraction. This a model to represent hierarchical information
+in a SQL database. This model takes a complementary approach of both
+the 'Nested Sets' model and the 'Materialized Path' model.
 
-The implementation has been heavily inspired by a Vadim Tropashko's article available online at http://arxiv.org/pdf/cs.DB/0402051 .
+The implementation has been heavily inspired by a Vadim Tropashko's
+paper available online at http://arxiv.org/pdf/cs.DB/0402051 about
+the Möbius encoding.
 
-The nested interval implementation has the same advantages that 'Nested Set' model over the 'Adjacency List' model (obtain all
-descendants require only one query and rather than recursive queries). But unlike 'Nested Set' model, the encoding is not volatile, it uses
-integer numbers more economically and it doesn't need to be recalculate when a new node is inserted into a tree. Plus, there is no
-difficulties associated with querying ancestors or to calculate the path to root of a given node (thus this model is somewhat also
-equivalent to the 'Materialized Path' model).
+A 'Nested Intervals' model has the same advantages that 'Nested Sets'
+over the 'Adjacency List', that is to say that obtaining all
+descendants requires only one query rather than recursive queries.
 
-The trade-off of this implementation is the use of 7 SQL columns to encode each node. 
+Additionally, a 'Nested Intervals' model has two advantages over 'Nested Sets' : 
+
+- Encoding is not volatile (no other node should be relabeled whenever
+  a new node were inserted).
+
+- There are no difficulties associated with querying ancestors.
+
+The Möbius encoding is a particular encoding schema of the 'Nested
+Intervals' model that uses integer numbers economically to allow
+better tree scaling and directly encode the material path of a node
+using continued fraction (thus this model also relates somewhat with
+the 'Materialized Path' model).
+
+The trade-off of all these advantages over other models is in this
+implementation the use of 7 SQL columns to encode each node.
 
 This implementation allows you to have several trees in your database.
 
@@ -405,11 +422,15 @@ If the child has descendants, the entire sub-tree is moved recursively.
 
 =head2 insert
 
-This method is an override of DBIx::Class' method.
+This method is an override of the DBIx::Class' method.
 
-This allows to add a virtual column that refer to the parent of the created DBIx::Class row.
+Typically the method should not be used directly but it allows one to
+add a virtual column to a new row that directly set the parent node
+when calling the DBIx::Class method create.
 
-=head2 children
+  My::Employee->create({ name => 'Another Intern', parent => $boss });
+
+=head2 parent
 
 Returns a DBIx::Class Row of the parent of a node.
 
@@ -419,23 +440,23 @@ Returns a DBIx::Class resultset of all children (direct descendants) of a node.
 
 =head2 leaf_children
 
-Returns a DBIx::Class resultset of all children (direct descendants) of a node that do not possess children.
+Returns a DBIx::Class resultset of all children (direct descendants) of a node that do not possess any child themselves.
 
 =head2 inner_children
 
-Returns a DBIx::Class resultset of all children (direct descendants) of a node that possess children.
+Returns a DBIx::Class resultset of all children (direct descendants) of a node that possess one or more child.
 
 =head2 descendants
 
-Returns a DBIx::Class resultset of all descendants of a node.
+Returns a DBIx::Class resultset of all descendants of a node (direct or not).
 
 =head2 leaves
 
-Returns a DBIx::Class resultset of all descendants of a node that do not possess children.
+Returns a DBIx::Class resultset of all descendants of a node that do not possess any child themselves.
 
 =head2 inner_descendants
 
-Returns a DBIx::Class resultset of all descendants of a node that possess children.
+Returns a DBIx::Class resultset of all descendants of a node that possess one or more child.
 
 =head2 ancestors
 
@@ -447,11 +468,11 @@ An alias method for ancestors.
 
 =head2 root
 
-Returns a DBIx::Class resultset containing the root node of a given node.
+Returns a DBIx::Class resultset containing the root ancestor of a given node.
 
 =head2 siblings
 
-Returns a DBIx::Class resultset containing all the node with the same parent of a given node.
+Returns a DBIx::Class resultset containing all the nodes with the same parent of a given node.
 
 =head2 is_root
 
@@ -459,11 +480,11 @@ Returns 1 if the node has no parent, and 0 otherwise.
 
 =head2 is_inner
 
-Returns 1 if the node has children, and 0 otherwise.
+Returns 1 if the node has at least one child, and 0 otherwise.
 
 =head2 is_branch
 
-Returns 1 if the node has children and a parent, and 0 otherwise.
+Returns 1 if the node has at least one child and is not a root node, 0 otherwise.
 
 =head2 is_leaf
 
