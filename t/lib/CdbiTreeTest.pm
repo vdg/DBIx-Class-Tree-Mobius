@@ -27,7 +27,7 @@ sub clear {
   my $db_file = File::Spec->catfile($db_dir, "Test.db");
   return unless -e $db_file;
   $_[0]->storage->disconnect;
-  #unlink($db_file) or die "Failed to clear test db $db_file";
+  unlink($db_file) or die "Failed to clear test db $db_file";
 }
 
 1;
