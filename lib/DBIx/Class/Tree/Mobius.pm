@@ -143,6 +143,8 @@ sub new {
 }
 
 # always use the leftmost index available
+# index 2 is reserved for leaves
+# index 1 is cannot be used mathematically
 
 sub _available_mobius_index {
     my @children = @_;
@@ -151,7 +153,7 @@ sub _available_mobius_index {
     foreach my $child (@children) {
         my @mpath = $child->mobius_path();
         my $index = pop @mpath;
-        last if ($count  > $index);
+        last if ($count > $index);
         $count--;
     }
     return $count;
@@ -169,7 +171,7 @@ sub _mobius_children {
 
 sub available_mobius_index {
     my $self = shift;
-        return _available_mobius_index( $self->_mobius_children->search({ $self->_is_inner_column => 1 }, { order_by => $self->_mobius_a_column. ' DESC' } ) );
+    return _available_mobius_index( $self->_mobius_children->search({ $self->_mobius_a_column => { '!=' => undef } }, { order_by => $self->_mobius_a_column. ' DESC' } ) );
 }
 
 sub _child_encoding {
@@ -185,7 +187,7 @@ sub child_encoding {
     my $self = shift;
     my $x = shift;
 
-    die ('cannot calculate encoding for non inner node') if ( $self->in_storage and not $self->get_column($self->_is_inner_column) );
+    die ('cannot calculate child encoding without parent encoding') if ( $self->in_storage and not $self->get_column($self->_mobius_a_column) );
 
     my ($pa, $pc) = $self->in_storage ? ( $self->get_column($self->_mobius_a_column), $self->get_column($self->_mobius_c_column) ) : ( 1, 0 );
     my ($pb, $pd) = $self->in_storage ? ( $self->get_column($self->_mobius_b_column), $self->get_column($self->_mobius_d_column) ) : ( 0, 1 );
@@ -195,7 +197,7 @@ sub child_encoding {
 sub _abcd {
     my $self = shift;
 
-    # matrix for mathematic root node 
+    # matrix for the mathematic super root node (abstract parent of all root nodes)
     my ($a, $b, $c, $d) = ( 1, 0, 0, 1 );
 
     if ( $self->in_storage ) {
@@ -247,7 +249,7 @@ sub insert {
         $self->store_column( $self->_mobius_c_column => $c );
     }
 
-    # d=0 (root nodes) is coded null to preserve unique contrainst
+    # d=0 (root nodes) is coded as a null value to preserve SQL unique contrainst
     $self->store_column( $self->_mobius_d_column => ($d == 0) ? undef : $d );
     $self->store_column( $self->_mobius_b_column => $b );
     $self->store_column( $self->_lft_column => $left );
@@ -271,7 +273,7 @@ sub root {
     return $self->parent ? $self->result_source->resultset->search( { $self->root_cond } )->search({
         $self->result_source->resultset->current_source_alias.'.'.$self->_lft_column => { '<' => $self->get_column($self->_rgt_column) },
         $self->result_source->resultset->current_source_alias.'.'.$self->_rgt_column => { '>' => $self->get_column($self->_lft_column) },
-                                                                                                   })->first : $self;
+    })->first : $self;
 }
 
 sub is_root {
@@ -428,6 +430,8 @@ sub make_root {
 
 
 1;
+
+=encoding utf8
 
 =head1 SYNOPSIS
 
@@ -613,9 +617,28 @@ Return the depth of a node in a tree (depth of a root node is 1).
 Force a node to become a new tree root (if this node possess a subtree 
 of descendants, it becomes a new tree).
  	
-=head1 BUGS
+=head1 BUGS AND LIMITATIONS
 
-This version doesn't 
+All functions should work hopefully as expected, until a tree reachs
+the 'left-right' maximum depth. That is to say 8 levels if you
+declared the two special columns 'lft' and 'rgt' as a SQL FLOAT, and
+21 levels if you declared them as a SQL DOUBLE. In the default 'strict
+mode', the library will enforce this 'left-right' maximum and will die
+if you try to add a child deeper.
+
+You may desactivated this check to allow DBIx::Class::Tree::Mobius
+creating nodes deeper than this maximum level.
+
+  __PACKAGE__->strict_mode( 0 );
+
+In this relaxed mode, only the function 'children' and 'parent' will
+work correctly and you should not trust the results returned by
+'descendants', 'leaves', 'inner_descendants', 'ancestors' for any node
+deeper than the maximum level.
+
+Finally, early testers should note that the encoding used since
+version 0.2000 is not compatible with the old encoding tested in
+experimental developper versions 0.00002_01 and 0.00001_04.
 
 =for Pod::Coverage new mobius_path root_cond inner_cond leaf_cond make_inner_node
 

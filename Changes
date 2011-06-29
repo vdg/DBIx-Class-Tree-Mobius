@@ -1,0 +1,8 @@
+This file documents the revision history for DBIx::Class::Tree::Mobius
+
+0.201     2011-06-29
+          fix utf8 in pod
+          complete documentation
+
+0.2000    2011-06-28
+          first release
