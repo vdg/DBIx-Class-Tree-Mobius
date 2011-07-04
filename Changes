@@ -1,5 +1,9 @@
 This file documents the revision history for DBIx::Class::Tree::Mobius
 
+0.202     2011-06-29
+          add DBIx::Class dependency
+          
+
 0.201     2011-06-29
           fix utf8 in pod
           complete documentation

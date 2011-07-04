@@ -20,6 +20,6 @@ __PACKAGE__->add_mobius_tree_columns(
 
 __PACKAGE__->set_primary_key('id');
 
-
+__PACKAGE__->strict_mode( 0 );
 
 1;
