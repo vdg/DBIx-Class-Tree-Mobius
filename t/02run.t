@@ -19,6 +19,10 @@ use_ok("CdbiTreeTest");
 my $schema = CdbiTreeTest->init_schema;
 my $rs     = $schema->resultset('Test');
 
+# bug in SQLite
+# http://www.sqlite.org/src/tktview?name=1248e6cda8
+Math::BigFloat->accuracy(15); 
+
 sub ids_list {
     my $rs = shift;
     return '' unless ref($rs);
@@ -79,7 +83,7 @@ is($id4->mobius_path, '3.2', 'check mobius path rec 3 child 1');
 is($id5->mobius_path, '3.2', 'check mobius path rec 3 child 2');
 is($id6->mobius_path, '3.2', 'check mobius path rec 3 child 3');
 
-is($id3->descendants()->count, '3', 'check descendants');
+is($id3->descendants()->count, '3', 'check descendants count rec id 3');
 
 #is(DBIx::Class::Tree::Mobius::_left_right($id4->tree_num, $id4->tree_den), 'l=3.200, r=3.250', 'left right values rec 3_1');
 #is(DBIx::Class::Tree::Mobius::_left_right($id5->tree_num, $id5->tree_den), 'l=3.167, r=3.200', 'left right values rec 3_2');
@@ -97,7 +101,7 @@ my $id11 = $rs->create({ data => 'fourth rec' });
 my $id12 = $rs->create({ parent => $id7->id, data => 'rec 3_2_1_1 child 1' });
 
 $id1 = $id1->get_from_storage();
-#
+
 # This test case has built 4 trees
 # Root nodes are id 1, 2, 3 and 11 
 #
@@ -108,7 +112,6 @@ $id1 = $id1->get_from_storage();
 #  10              7   8
 #                 /
 #               12
-
 
 is($id1->parent, undef, 'check id1 parent');
 #is(ids_list(scalar $id1->siblings), '2,3,11', 'check id1 siblings');

@@ -6,13 +6,11 @@ use warnings;
 
 use bigint;
 
-#Math::BigInt->precision(53);
 use Math::BigFloat;
-Math::BigFloat->precision(53);
 
 use base qw/DBIx::Class/;
 
-__PACKAGE__->mk_classdata( 'strict_mode' => 0 );
+__PACKAGE__->mk_classdata( 'strict_mode' => 1 );
 
 __PACKAGE__->mk_classdata( 'parent_virtual_column' => 'parent' );
 
@@ -28,9 +26,8 @@ sub add_mobius_tree_columns {
     my $class = shift;
     my %column_names = @_;
 
-    {
-        #workaround SQL::Translator::Producer::MySQL bug
-        no bigint;
+    #workaround SQL::Translator::Producer::MySQL bug
+    no bigint;
 
     foreach my $name (qw/ mobius_a mobius_b mobius_c mobius_d lft rgt is_inner /) {
         next unless exists $column_names{$name};
@@ -64,7 +61,8 @@ sub add_mobius_tree_columns {
       
     }
 
-    }
+    Math::BigFloat->accuracy(53); 
+
 }
 
 sub children {
@@ -101,7 +99,6 @@ sub _euclidean {
     my ($a, $c) = (Math::BigInt->new(shift), Math::BigInt->new(shift));
     return unless ($c);
     my ($quo, $rem) = $a->bdiv($c);
-    print "euclidean $a % $c => ($quo, $rem) \n";
     return $rem == 0 ? $quo : ($quo, _euclidean($c, $rem));
 }
 
@@ -126,12 +123,9 @@ sub _mobius_path {
 
 sub _left_right {
     my ($a, $b, $c, $d) = @_;
-
-    Math::BigFloat->accuracy(5); 
-
-    print "_left_right a, b, c, d => $a, $b, $c, $d \n";
     my $left = Math::BigFloat->new($a+$b)->bdiv($c+$d);
-    my $right = Math::BigFloat->new($x)->bdiv($c);
+    my $right = Math::BigFloat->new($a)->bdiv($c);
+    ($left, $right) = ($right, $left) if ($left > $right);
     if ($left == $right) {
         if (__PACKAGE__->strict_mode) {
             die("maximum depth has been reached.");
@@ -139,7 +133,6 @@ sub _left_right {
             warn("maximum depth has been reached.");
         }
     }
-    print "_left_right $left, $right \n";
     return wantarray ? ($left, $right) : sprintf("l=%.20f, r=%.20f", $left, $right);
 }
 
@@ -311,9 +304,9 @@ sub is_leaf {
     return $self->get_column($self->_is_inner_column) ? 0 : 1;
 }
 
-# XXX can only work if primary key
 sub siblings {
     my $self = shift;
+    warn("siblings is broken in this version: return siblings + self");
     return $self->_mobius_parent->_mobius_children();
     # -or => {
     #     $self->result_source->resultset->current_source_alias.'.'.$self->_mobius_a_column => { '!=' => $self->get_column($self->_mobius_a_column) },
@@ -450,20 +443,21 @@ sub make_root {
 
 =head1 SYNOPSIS
 
-Create a table for your tree data with the 7 special columns used by Tree::Mobius.
-By default, these columns are mobius_a mobius_b mobius_b and mobius_d (integer),
-lft and rgt (float) and inner (boolean). See the add_mobius_tree_columns method
-to change the default names.
+Create a table for your tree data with the 7 special columns used by
+Tree::Mobius.  By default, these columns are mobius_a mobius_b
+mobius_b and mobius_d (bigint), lft and rgt (double float) and
+is_inner (boolean). See the add_mobius_tree_columns method to change
+the default names.
 
   CREATE TABLE employees (
     name TEXT NOT NULL
-    mobius_a integer(11) unsigned,
-    mobius_b integer(11) unsigned,
-    mobius_c integer(11) unsigned,
-    mobius_d integer(11) unsigned,
-    lft FLOAT unsigned NOT NULL DEFAULT '1',
-    rgt FLOAT unsigned,
-    inner boolean NOT NULL DEFAULT '0',
+    mobius_a BIGINT unsigned,
+    mobius_b BIGINT unsigned,
+    mobius_c BIGINT unsigned,
+    mobius_d BIGINT unsigned,
+    lft DOUBLE unsigned NOT NULL DEFAULT '1',
+    rgt DOUBLE unsigned,
+    is_inner boolean NOT NULL DEFAULT '0',
   );
 
 In your Schema or DB class add Tree::Mobius in the component list.
@@ -492,21 +486,23 @@ That's it, now you can create and manipulate trees for your table.
 This module provides methods for working with trees of data using a
 Möbius encoding, a variant of 'Nested Intervals' tree encoding using
 continued fraction. This a model to represent hierarchical information
-in a SQL database. This model takes a complementary approach of both
-the 'Nested Sets' model and the 'Materialized Path' model.
+in a SQL database that takes a complementary approach of both the
+'Nested Sets' model and the 'Materialized Path' model.
 
 The implementation has been heavily inspired by a Vadim Tropashko's
 paper available online at http://arxiv.org/pdf/cs.DB/0402051 about
 the Möbius encoding.
 
-A 'Nested Intervals' model has the same advantages that 'Nested Sets'
-over the 'Adjacency List', that is to say that obtaining all
-descendants requires only one query rather than recursive queries.
+In general, a 'Nested Intervals' model has the same advantages that
+'Nested Sets' over the 'Adjacency List', that is to say obtaining all
+descendants requires only one SQL query rather than several recursive
+queries.
 
-Additionally, a 'Nested Intervals' model has two advantages over 'Nested Sets' : 
+Additionally, a 'Nested Intervals' model has two more advantages over
+'Nested Sets' :
 
-- Encoding is not volatile (no other node should be relabeled whenever
-  a new node were inserted).
+- Encoding is not volatile (no other node has to be relabeled whenever
+  a new node is inserted in the database).
 
 - There are no difficulties associated with querying ancestors.
 
@@ -519,17 +515,17 @@ the 'Materialized Path' model).
 This implementation allows you to have several root trees and
 corresponding trees in your database.
 
-To allow better performance, Tree::Mobius uses the same
-Möbius encoding for all non inner children of a given node. A unique
-Möbius encoding is later calculated only if a node becomes 'inner'
-(having at least one descendant).
+To allow better performance and scaling, Tree::Mobius uses the same
+Möbius encoding for all leaves (non inner children) of a given node. A
+unique Möbius encoding is later calculated only if a node becomes
+'inner' (having at least one descendant).
 
-Since the encoding is not volatile, the depth is constrained by the
-precision of FLOAT in the right and left column. The maximum depth
-reachable is 8 levels with a simple SQL FLOAT, and 21 with a SQL
-DOUBLE. If your trees will contain many inner nodes, you may also
-consider using a BIGINT instead of INT for mobius_a, mobius_b,
-mobius_c and mobius_d column (see CAVEATS AND LIMITATIONS).
+The encoding is not volatile, but the depth is constrained by the
+precision of SQL float type in the right and left column. The maximum
+depth reachable is 8 levels with a simple SQL FLOAT, and 21 with a SQL
+DOUBLE. The number of inner nodes of your trees are also constrained
+by the maximum integer allowed for mobius_a, mobius_b, mobius_c and
+mobius_d column (see CAVEATS AND LIMITATIONS).
 
 Finally, a tradeoff of DBIx::Class::Tree::Mobius over other models is
 the non-economical use of 7 SQL columns to encode each node.
@@ -642,14 +638,14 @@ of descendants, it becomes a new tree).
 
 =head2 'left-right' maximum depth
 
-All functions should work hopefully as expected, until a tree reachs
-the 'left-right' maximum depth. That is to say 8 levels if you
-declared the two special columns 'lft' and 'rgt' as a SQL FLOAT, and
-21 levels if you declared them as a SQL DOUBLE. In the default 'strict
-mode', the library will enforce this 'left-right' maximum and will die
-if you try to add a child deeper.
+All functions should work as expected until a tree reaches the
+'left-right' maximum depth. That is to say 8 levels if you declared
+the two special columns 'lft' and 'rgt' as a SQL FLOAT, and 21 levels
+if you declared them as a SQL DOUBLE. In the default 'strict mode',
+the library will enforce this 'left-right' maximum and will die if you
+try to add a child deeper.
 
-You may desactivated this check to allow Tree::Mobius creating nodes
+You may desactivate this check and allow Tree::Mobius to create nodes
 deeper than this maximum level.
 
   __PACKAGE__->strict_mode( 0 );
@@ -659,16 +655,25 @@ work correctly and you should not trust the results returned by
 'descendants', 'leaves', 'inner_descendants', 'ancestors' for any node
 deeper than the maximum level.
 
-=head2 'mobius' maximum index 
+Please also note that there is a bug in SQLite
+http://www.sqlite.org/src/tktview?name=1248e6cda8 that prevent use of
+more than 15 decimal precision FLOAT. A workaround consists of
+manually restricting the accuracy of float in Tree::Mobius after the
+add_mobius_tree_columns call :
+
+Math::BigFloat->accuracy(15); 
+
+
+=head2 'mobius' maximum index
 
 The Möbius representation (using 4 integers a,b,c,d) is limited by the
-maximum value of the integer type of the corresponding columns in your
-SQL database. Specifically, this encoding only limits the number of
-inner nodes (nodes with at least one child) representable on the right
-side of the tree. The upper limit can be calculated using the least
-favorable Tree::Mobius inner node materialized path (with the highest
-index at each level, not counting leaves), either recursively or using
-matrix multiplication.
+maximum value of the type 'integer' of the corresponding columns in
+your SQL database. Specifically, this encoding only limits the number
+of inner nodes (nodes with at least one child) representable on the
+right side of the tree. The upper limit can be calculated using the
+least favorable Tree::Mobius inner node materialized path (with the
+highest index at each level, not counting leaves), either recursively
+or using matrix multiplication.
 
 For example, a 4 levels depth tree with 5 inner nodes at level 1, 5
 children inner nodes at level 2 attached to the rightmost level 1
@@ -682,8 +687,9 @@ multiplication:
     ( 7  1 ) . ( 7  1 ) . ( 7  1 ) = ( 2549  357 )
     ( 1  0 )   ( 1  0 )   ( 1  0 )   (  357  50  )
 
-In our example, a=2549, b=357, c=357 and d=50 and can be off course
-be represented by the database INT type.
+In our example, a=2549, b=357, c=357 and d=50 and all numbers are
+within the limits of the database INT or BIGINT type. Thus this tree
+can be encoded by Tree::Mobius.
 
 Using this method, we can calculate the worst case inner node
 materialized path for the following inner node depth and the maximum
@@ -698,25 +704,25 @@ value of a MySQL UNSIGNED INT, that is to say 4294967295.
 
 The limits with MySQL UNSIGNED BIGINT (18446744073709551615) are :
 
- - 2  levels : 2642243.2642243
- - 3  levels : 65533.65533.65533
- - 4  levels : 7129.7129.7129.7129
- - 5  levels : 1623.1623.1623.1623.1623
- - 6  levels : 563.563.563.563.563.563
- - 7  levels : 253.253.253.253.253.253.253
- - 8  levels : 136.136.136.136.136.136.136.136
- - 9  levels : 82.82.82.82.82.82.82.82.82
- - 10 levels : 54.54.54.54.54.54.54.54.54.54
- - 11 levels : 38.38.38.38.38.38.38.38.38.38.38
- - 12 levels : 28.28.28.28.28.28.28.28.28.28.28.28
- - 13 levels : 21.21.21.21.21.21.21.21.21.21.21.21.21
- - 14 levels : 17.17.17.17.17.17.17.17.17.17.17.17.17.17
- - 15 levels : 13.13.13.13.13.13.13.13.13.13.13.13.13.13.13
- - 16 levels : 11.11.11.11.11.11.11.11.11.11.11.11.11.11.11.11
- - 17 levels : 9.9.9.9.9.9.9.9.9.9.9.9.9.9.9.9.9
- - 18 levels : 8.8.8.8.8.8.8.8.8.8.8.8.8.8.8.8.8.8
- - 19 levels : 7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7
- - 20 levels : 6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6
+ - 3  levels : 2642243.2642243.2642243
+ - 4  levels : 65533.65533.65533.65533
+ - 5  levels : 7129.7129.7129.7129.7129
+ - 6  levels : 1623.1623.1623.1623.1623.1623
+ - 7  levels : 563.563.563.563.563.563  
+ - 8  levels : 253.253.253.253.253.253.253.253
+ - 9  levels : 136.136.136.136.136.136.136.136.136
+ - 10 levels : 82.82.82.82.82.82.82.82.82
+ - 11 levels : 54.54.54.54.54.54.54.54.54.54.54
+ - 12 levels : 38.38.38.38.38.38.38.38.38.38.38.38
+ - 13 levels : 28.28.28.28.28.28.28.28.28.28.28.28.28
+ - 14 levels : 21.21.21.21.21.21.21.21.21.21.21.21.21.21
+ - 15 levels : 17.17.17.17.17.17.17.17.17.17.17.17.17.17.17
+ - 16 levels : 13.13.13.13.13.13.13.13.13.13.13.13.13.13.13.13
+ - 17 levels : 11.11.11.11.11.11.11.11.11.11.11.11.11.11.11.11.11
+ - 18 levels : 9.9.9.9.9.9.9.9.9.9.9.9.9.9.9.9.9.9
+ - 19 levels : 8.8.8.8.8.8.8.8.8.8.8.8.8.8.8.8.8.8.8
+ - 20 levels : 7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7.7
+ - 21 levels : 6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6.6
 
 For all these scenarios, there are no constraint with the number of
 leaves at any level.
@@ -741,7 +747,6 @@ of these trees are in fact children of an abstract mathematic super root node
 (there will be no row in your database for it).
 
 The Möbius represention of this super root node is (a, b, c, d) = ( 1, 0, 0, 1 )
-
 
 =for Pod::Coverage new mobius_path root_cond inner_cond leaf_cond make_inner_node
 

@@ -16,8 +16,8 @@ sub init_schema {
   unlink($db_file . "-journal") if -e $db_file . "-journal";
   mkdir($db_dir) unless -d $db_dir;
 
-  #my $dsn = "dbi:SQLite:dbname=${db_file}";
-  my $dsn = "dbi:mysql:dbname=mobius";
+  my $dsn = "dbi:SQLite:dbname=${db_file}";
+  #my $dsn = "dbi:mysql:dbname=mobius";
   my $schema = CdbiTreeTest::Schema->connect($dsn);
   $schema->deploy();
   return $schema;

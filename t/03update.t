@@ -59,7 +59,7 @@ for ('A' .. 'Z') {
 
 
 END {
-  # In the END section so that the test DB file gets closed before we attempt to unlink it
+    # In the END section so that the test DB file gets closed before we attempt to unlink it
     CdbiTreeTest::clear($schema);
 }
 

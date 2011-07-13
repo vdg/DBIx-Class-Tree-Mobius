@@ -18,9 +18,15 @@ use File::Spec;
 use FindBin '$Bin';
 use lib File::Spec->catdir($Bin, 'lib');
 
-my $tests = 103;
+my @limits = (
+    # limit with int & float (SQLite)
+    { int => 4294967295, depth => 7, max_index => 13, tests => 94 },
+    # limit with bigint & double (MySQL)
+    # { int => 18446744073709551615, depth => 5, max_index => 7129, tests => 128}, => ok
+    # { int => 18446744073709551615, depth => 21, max_index => 6, tests => 128},
+    );
 
-plan tests => $tests;
+plan tests => $limits[0]->{tests};
 
 #1
 use_ok("CdbiTreeTest");
@@ -29,14 +35,6 @@ my $schema = CdbiTreeTest->init_schema;
 my $rs     = $schema->resultset('Test');
 
 use Math::Matrix;
-
-my @limits = (
-    # limit with int
-   # { int => 4294967295, depth => 7, max_index => 13 },
-    # limit with bigint (Perl + Mysql)
-    { int => 18446744073709551615, depth => 4, max_index => 6},
-    );
-
 
 foreach my $test (@limits) {
     
@@ -61,20 +59,12 @@ foreach my $test (@limits) {
             my $child = $rs->create({ parent => $node->id, data => "child of ($level/$index)" });
             $node = $node->get_from_storage();
 
-            print $node->_abcd."\n";
+            #print $node->_abcd."\n";
+
             is(scalar $node->mobius_path, $rightmost_path . ($index + 2), "level $level / node $index mobius_path");
 
             $rightmost_node = $node if ($index == $test->{max_index});
 
-            if ($ENV{AUTHOR_DEBUG} and $node->mobius_path eq '8.8.8.8.8.8.8.7.1.12.1.5.2.3.2.1.25.3.4.1.2.1.1.10') {
-                print "***********************************************************\n";
-                print $node->parent->_abcd."\n";
-                print $node->parent->mobius_path."\n";
-                print "*******level $level / node $index********************************\n";
-                print $node->_abcd."\n";
-                print $node->mobius_path."\n";
-                exit();
-            }
         }
 
         $rightmost_path .= ($test->{max_index}+2). '.';
@@ -87,19 +77,15 @@ foreach my $test (@limits) {
 
         is(scalar $rightmost_node->_abcd, 
            sprintf("(%dx + %d) / (%dx + %d)", $x->[0]->[0], $x->[0]->[1], $x->[1]->[0], $x->[1]->[1]),
-           "check level $test->{depth} rightmost_node abcd with maxtrix");
+           "check level $test->{depth} rightmost_node abcd with matrix");
 
     }
 
-    exit();
-
 }
 
-
-
 END {
-  # In the END section so that the test DB file gets closed before we attempt to unlink it
-    #CdbiTreeTest::clear($schema);
+    # In the END section so that the test DB file gets closed before we attempt to unlink it
+    CdbiTreeTest::clear($schema);
 }
 
 1;
