@@ -1,5 +1,8 @@
 This file documents the revision history for DBIx::Class::Tree::Mobius
 
+0.212     2011-07-15
+          add SQL::Translator test dependency 
+
 0.211     2011-07-13
           cleanup git tmp files in last release
 
