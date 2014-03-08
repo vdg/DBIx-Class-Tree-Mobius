@@ -737,6 +737,10 @@ Finally, early testers should note that the encoding used since
 version 0.2000 is not compatible with the old encoding tested in
 experimental developper versions 0.00002_01 and 0.00001_04.
 
+=head1 REPOSITORY
+
+L<https://github.com/vdg/DBIx-Class-Tree-Mobius>
+
 =head1 INTERNAL
 
 The Möbius encoding (ax+b)/(cx+d) can represent a tree giving the
