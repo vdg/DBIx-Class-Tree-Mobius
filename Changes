@@ -2,6 +2,7 @@ Revision history for Perl module DBIx::Class::Tree::Mobius
 
 0.213     2014-03-
           - Added abstract to pod
+          - Added [GithubMeta] to dist.ini so repo will appear in metadata
 
 0.212     2011-07-15
           - add SQL::Translator test dependency 
