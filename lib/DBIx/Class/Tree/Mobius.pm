@@ -1,6 +1,7 @@
 package DBIx::Class::Tree::Mobius;
 # ABSTRACT: Manage trees of data using the Möbius encoding (nested intervals with continued fraction)
 
+use 5.010;
 use strict;
 use warnings;
 
