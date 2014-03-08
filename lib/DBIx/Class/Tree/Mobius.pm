@@ -441,6 +441,10 @@ sub make_root {
 
 =encoding utf8
 
+=head1 NAME
+
+DBIx::Class::Tree::Mobius - manage trees of data using the Möbius encoding
+
 =head1 SYNOPSIS
 
 Create a table for your tree data with the 7 special columns used by
